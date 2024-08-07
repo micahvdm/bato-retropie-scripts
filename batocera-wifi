@@ -1,0 +1,63 @@
+#!/bin/sh
+
+do_help() {
+    echo "$0 scanlist" >&2
+    echo "$0 list" >&2
+}
+
+do_list() {
+    sudo nmcli -f SSID dev wifi | sed '1d' | grep -v '^--' | sed 's/[[:space:]]*$//' | sort -u # remove duplicates (a single wifi can appear under 2 interfaces)
+}
+
+do_scanlist() {
+    sudo nmcli -f SSID dev wifi >/dev/null 2>/dev/null
+    do_list
+}
+
+
+if [ $# -eq 0 ]; then
+        do_help
+        exit 1
+fi
+
+ACTION=$1
+shift
+
+case "${ACTION}" in
+    "list")
+        do_list
+        ;;
+    "scanlist")
+        do_scanlist
+        ;;
+    "start")
+        /etc/init.d/S08connman restart
+        ;;
+    "enable")
+        sudo ifup wlan0
+        sudo nmcli connection reload
+        if [ "$#" -eq 2 ]; then
+        sudo nmcli device wifi connect "$1" password "$2"
+        fi
+
+        # wait up to 5 sec for an IP address
+        N=0
+        ifconfig | grep "inet addr" | grep -qv "127\.0\.0\.1"
+        while test $? -ne 0 -a $N -lt 10 # 10 tries
+        do
+                N=$((N+1))
+                sleep 0.5
+                ifconfig | grep "inet addr" | grep -qv "127\.0\.0\.1"
+        done
+
+        ;;
+    "disable")
+        sudo ifdown wlan0
+        sudo nmcli connection reload
+        ;;
+        *)
+                do_help
+                >&2 echo "error: invalid command ${ACTION}"
+                exit 1
+esac
+exit 0
